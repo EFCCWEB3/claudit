@@ -86,12 +86,26 @@ class SimpleCache {
 const cache = new SimpleCache();
 const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 min
 
-// Index findings by ID for fast lookup by get_finding
-const findingsById = new Map<string, FindingData>();
+// 1. My br change the Map to store an object with an expiry time
+const findingsById = new Map<string, { data: FindingData; expiresAt: number }>();
+const FINDINGS_TTL = 30 * 60 * 1000; //  Maybe 30 minutes in milliseconds
 
 function indexFindings(findings: FindingData[]): void {
+  const now = Date.now();
+  
+  // 2. Cleanup: Delete entries that are older than 30 minutes
+  for (const [key, value] of findingsById.entries()) {
+    if (now > value.expiresAt) {
+      findingsById.delete(key);
+    }
+  }
+  
+  // 3. Add new findings with their timestamp
   for (const f of findings) {
-    findingsById.set(f.id, f);
+    findingsById.set(f.id, { 
+      data: f, 
+      expiresAt: now + FINDINGS_TTL 
+    });
   }
 }
 
@@ -484,12 +498,12 @@ server.tool(
     // Check if identifier is a numeric ID — instant lookup from cache
     const numericId = slug.replace(/^#/, "").trim();
     if (/^\d+$/.test(numericId)) {
-      const cached = findingsById.get(numericId);
-      if (cached) {
-        return {
-          content: [{ type: "text" as const, text: formatFindingFull(cached) }],
-        };
-      }
+      const entry = findingsById.get(numericId);
+if (entry) {
+  return {
+    content: [{ type: "text" as const, text: formatFindingFull(entry.data) }],
+  };
+}
       // Not in cache — fall through to keyword search using ID
     }
 
